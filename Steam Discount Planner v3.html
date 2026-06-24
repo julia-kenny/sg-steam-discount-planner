@@ -1,0 +1,1591 @@
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Steam Discount Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&amp;family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0b0e14;
+    --surface:   #131720;
+    --surface2:  #1a2030;
+    --border:    #242d40;
+    --accent:    #4fc3f7;
+    --green:     #43d9ad;
+    --red:       #ff5f7e;
+    --amber:     #ffc46b;
+    --text:      #d8e0f0;
+    --muted:     #5c6a8a;
+    --seasonal:  #2a9d8f;
+    --third:     #e07b4a;
+    --standard:  #4a7fc1;
+    --launch:    #c47ed4;
+    --cooldown:  #2d3550;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Plus Jakarta Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 28px 32px 60px;
+  }
+
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .header h1 { font-family: var(--sans); font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #fff; }
+  .header .sub { color: var(--muted); font-size: 12px; }
+  .pill { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 10px; font-size: 11px; color: var(--accent); margin-left: auto; }
+
+  .layout { display: grid; grid-template-columns: 360px 1fr; gap: 24px; align-items: start; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+  .panel:last-child { margin-bottom: 0; }
+  .panel-head { padding: 12px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .panel-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+
+
+  /* Events */
+  .events-list { padding: 10px; display: flex; flex-direction: column; gap: 2px; }
+  .event-group-label { font-size: 10px; font-weight: 500; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); padding: 8px 4px 4px; }
+
+  .event-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 6px; cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.12s, border-color 0.12s, opacity 0.15s;
+    user-select: none; position: relative;
+  }
+  .event-row:hover:not(.disabled) { background: var(--surface2); }
+  .event-row.checked { background: rgba(79,195,247,0.06); border-color: rgba(79,195,247,0.2); }
+  .event-row.conflict { background: rgba(255,95,126,0.06); border-color: rgba(255,95,126,0.25); }
+
+  /* DISABLED = greyed out, cannot participate at all regardless of selections */
+  .event-row.disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+    filter: grayscale(0.4);
+  }
+  .event-row.disabled:hover { background: transparent; }
+
+  /* INCOMPATIBLE = would conflict with current selections — greyed but tappable with tooltip */
+  .event-row.incompatible {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .event-row.incompatible:hover { background: rgba(255,196,107,0.04); border-color: rgba(255,196,107,0.2); }
+
+  .custom-cb { width: 16px; height: 16px; border: 1.5px solid var(--border); border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: border-color 0.12s, background 0.12s; font-size: 10px; }
+  .event-row.checked .custom-cb { background: var(--accent); border-color: var(--accent); color: #000; }
+  .event-row.conflict .custom-cb { background: rgba(255,95,126,0.2); border-color: var(--red); color: var(--red); }
+  .event-row.incompatible .custom-cb { border-color: var(--amber); }
+  .event-row.disabled .custom-cb { border-color: #333; }
+
+  .event-info { flex: 1; min-width: 0; }
+  .event-name { font-size: 12.5px; font-weight: 500; color: var(--text); }
+  .event-date { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .event-row.checked .event-name { color: var(--accent); }
+  .event-row.conflict .event-name { color: var(--red); }
+
+  .status-tag { font-size: 9px; font-weight: 500; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; flex-shrink: 0; white-space: nowrap; }
+  .tag-SEASONAL    { background: rgba(42,157,143,0.2);  color: var(--seasonal); }
+  .tag-THIRD_PARTY { background: rgba(224,123,74,0.2);  color: var(--third); }
+  .tag-STANDARD    { background: rgba(74,127,193,0.2);  color: var(--standard); }
+  .tag-blocked     { background: rgba(255,95,126,0.15); color: var(--red); }
+  .tag-locked      { background: rgba(255,196,107,0.15); color: var(--amber); }
+  .tag-release     { background: rgba(92,106,138,0.2);  color: var(--muted); }
+
+  /* Tooltip on incompatible rows */
+  .event-row .tooltip {
+    display: none;
+    position: absolute;
+    left: 100%; top: 50%; transform: translateY(-50%);
+    margin-left: 10px;
+    background: #1e2740;
+    border: 1px solid var(--amber);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--amber);
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+    max-width: 260px;
+    white-space: normal;
+    line-height: 1.5;
+    width: 220px;
+  }
+  .event-row.incompatible:hover .tooltip,
+  .event-row.conflict:hover .tooltip { display: block; }
+  .event-row.disabled:hover .tooltip { display: block; }
+
+  /* Validation */
+  .validation-bar { margin: 10px; padding: 10px 14px; border-radius: 7px; font-size: 12px; border: 1px solid; line-height: 1.5; }
+  .validation-bar.valid   { background: rgba(67,217,173,0.08); border-color: rgba(67,217,173,0.3); color: var(--green); }
+  .validation-bar.invalid { background: rgba(255,95,126,0.08); border-color: rgba(255,95,126,0.3); color: var(--red); }
+  .validation-bar.empty   { background: var(--surface2); border-color: var(--border); color: var(--muted); }
+  .conflict-detail { margin-top: 5px; font-size: 11px; opacity: 0.85; }
+
+  /* Timeline */
+  .timeline-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .timeline-head { padding: 12px 20px; background: var(--surface2); border-bottom: 1px solid var(--border); font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .timeline-head .scroll-hint { font-size: 10px; font-weight: 400; color: var(--muted); letter-spacing: 0; text-transform: none; font-family: var(--mono); }
+  .timeline-inner { display: flex; overflow: hidden; }
+  .gantt-labels { flex-shrink: 0; overflow: hidden; background: var(--surface); z-index: 2; border-right: 1px solid var(--border); }
+  .gantt-scroll  { overflow-x: auto; overflow-y: hidden; flex: 1; }
+  .gantt-scroll::-webkit-scrollbar { height: 6px; }
+  .gantt-scroll::-webkit-scrollbar-track { background: var(--surface2); }
+  .gantt-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  #gantt-label-svg, #gantt-chart-svg { display: block; font-family: var(--mono); }
+
+  .legend { display: flex; gap: 16px; padding: 12px 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .legend-swatch { width: 12px; height: 12px; border-radius: 2px; }
+
+  .empty-state { padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.8; }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+
+  /* Export buttons */
+  .export-btns { display: flex; gap: 8px; margin-left: auto; }
+  .export-btn {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 5px;
+    color: #a0b0cc; font-family: var(--mono); font-size: 11px;
+    padding: 4px 12px; cursor: pointer; transition: border-color 0.15s, color 0.15s;
+    white-space: nowrap;
+  }
+  .export-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .export-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Rules reference */
+  .rules-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .rule-item { display: flex; gap: 10px; font-size: 11px; line-height: 1.5; }
+  .rule-icon { flex-shrink: 0; font-size: 13px; margin-top: 1px; }
+  .rule-text { color: var(--muted); }
+  .rule-text strong { color: var(--text); font-weight: 400; }
+
+  /* Add Event form */
+  .add-form { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .form-row { display: flex; gap: 8px; }
+  .form-field { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+  .form-field label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .form-field input, .form-field select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 10px;
+    width: 100%;
+    transition: border-color 0.15s;
+    appearance: none;
+  }
+  .form-field input:focus, .form-field select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+  .form-field input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.5);
+    cursor: pointer;
+  }
+  .form-field select option { background: #1a2030; }
+
+  .type-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+  .type-pill {
+    padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--muted); cursor: pointer; transition: all 0.15s;
+  }
+  .type-pill:hover { border-color: var(--accent); color: var(--accent); }
+  .type-pill.active-SEASONAL    { background: rgba(42,157,143,0.2);  border-color: var(--seasonal);  color: var(--seasonal); }
+  .type-pill.active-THIRD_PARTY { background: rgba(224,123,74,0.2);  border-color: var(--third);     color: var(--third); }
+  .type-pill.active-STANDARD    { background: rgba(74,127,193,0.2);  border-color: var(--standard);  color: var(--standard); }
+
+  .add-btn {
+    background: var(--accent); color: #000; border: none; border-radius: 6px;
+    padding: 9px 16px; font-family: var(--mono); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: opacity 0.15s; width: 100%;
+  }
+  .add-btn:hover { opacity: 0.85; }
+  .add-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .form-error { font-size: 11px; color: var(--red); padding: 0 2px; min-height: 16px; }
+
+  /* Duration toggle for standard discounts */
+  .dur-toggle {
+    display: inline-flex; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border); flex-shrink: 0;
+    font-size: 10px; font-family: var(--mono);
+  }
+  .dur-btn {
+    padding: 3px 8px; background: var(--surface2); color: var(--muted);
+    border: none; cursor: pointer; font-family: var(--mono); font-size: 10px;
+    transition: background 0.12s, color 0.12s; border-right: 1px solid var(--border);
+    line-height: 1.4;
+  }
+  .dur-btn:last-child { border-right: none; }
+  .dur-btn.active { background: var(--standard); color: #fff; }
+  .dur-btn:hover:not(.active) { color: var(--text); }
+
+  /* Inline edit mode */
+  .edit-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 12px; padding: 0 3px; line-height: 1; flex-shrink: 0;
+    transition: color 0.12s; opacity: 0;
+  }
+  .event-row:hover .edit-btn { opacity: 1; }
+  .edit-btn:hover { color: var(--accent); }
+
+  .inline-edit {
+    display: none; flex-direction: column; gap: 6px;
+    padding: 8px 10px 10px;
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+  }
+  .inline-edit.open { display: flex; }
+  .inline-edit-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .inline-edit label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); white-space: nowrap; }
+  .inline-edit input[type="number"], .inline-edit input[type="date"] {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); font-family: var(--mono); font-size: 12px; padding: 5px 8px;
+    transition: border-color 0.15s;
+  }
+  .inline-edit input:focus { outline: none; border-color: var(--accent); }
+  .inline-edit input[type="number"] { width: 72px; }
+  .inline-edit input[type="date"]   { width: 140px; }
+  .inline-edit input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5); cursor: pointer; }
+  .edit-save-btn {
+    background: var(--accent); color: #000; border: none; border-radius: 4px;
+    padding: 5px 12px; font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer;
+  }
+  .edit-save-btn:hover { opacity: 0.85; }
+  .edit-cancel-btn {
+    background: none; color: var(--muted); border: 1px solid var(--border); border-radius: 4px;
+    padding: 5px 10px; font-family: var(--mono); font-size: 11px; cursor: pointer;
+  }
+  .edit-cancel-btn:hover { color: var(--text); border-color: var(--text); }
+  .edit-error { font-size: 11px; color: var(--red); }
+
+  /* Custom event delete button */
+  .delete-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 14px; padding: 0 2px; line-height: 1; flex-shrink: 0;
+    transition: color 0.12s;
+  }
+  .delete-btn:hover { color: var(--red); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🎮 Steam Discount Planner</h1>
+  <span class="sub">Hypothetical timeline builder · Steam cooldown rules</span>
+  <span class="pill">Launch: May 18 2026 · Launch discount ends Jun 1</span>
+</div>
+
+<div class="layout">
+  <div>
+    <!-- Events -->
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span> Sale Events</div>
+      <div class="events-list" id="events-container"><div class="event-group-label">Seasonal Sales</div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Summer Sale</div>
+          <div class="event-date">25 Jun - 9 Jul · 10% off</div>
+        </div>
+        <span class="status-tag tag-SEASONAL">Seasonal</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-06-25">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-07-09">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Autumn Sale</div>
+          <div class="event-date">5 Oct - 12 Oct · 15% off</div>
+        </div>
+        <span class="status-tag tag-SEASONAL">Seasonal</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="15">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-10-05">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-10-12">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Winter Sale</div>
+          <div class="event-date">17 Dec - 4 Jan · 20% off</div>
+        </div>
+        <span class="status-tag tag-SEASONAL">Seasonal</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="20">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-12-17">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2027-01-04">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div class="event-group-label">Third-Party Events</div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">SimFest</div>
+          <div class="event-date">20 Jul - 27 Jul · 10% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-07-20">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-07-27">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Tiny Teams</div>
+          <div class="event-date">2 Aug - 6 Aug · 10% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-08-02">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-08-06">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Crunchy Pixels Sale</div>
+          <div class="event-date">3 Aug - 10 Aug · 10% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-08-03">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-08-10">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Wholesome Celebration</div>
+          <div class="event-date">6 Aug - 13 Aug · 10% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-08-06">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-08-13">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">LudoNarraCon</div>
+          <div class="event-date">8 Oct - 15 Oct · 15% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        <button class="delete-btn" title="Remove event">×</button>
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="15">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-10-08">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-10-15">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div><div style="border-radius: 6px; overflow: hidden;"><div class="event-row">
+        <div class="custom-cb"></div>
+        <div class="event-info">
+          <div class="event-name">Cozy Quest</div>
+          <div class="event-date">17 Nov - 24 Nov · 10% off</div>
+        </div>
+        <span class="status-tag tag-THIRD_PARTY">3rd Party</span>
+        
+        <button class="edit-btn" title="Edit event">✎</button>
+        <button class="delete-btn" title="Remove event">×</button>
+      </div><div class="inline-edit">
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="10">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="2026-11-17">
+          <label>End</label>
+          <input type="date" class="edit-end" value="2026-11-24">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      </div></div></div>
+      <div id="validation-bar" class="validation-bar empty" style="margin:10px;">Select events above to see your timeline.</div>
+    </div>
+
+    <!-- Add Event -->
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span> Add New Sale Event</div>
+      <div class="add-form">
+        <div class="form-field">
+          <label>Event Name</label>
+          <input type="text" id="new-name" placeholder="e.g. Wholesome Direct 2027" maxlength="60">
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Start Date</label>
+            <input type="date" id="new-start" onchange="const e=document.getElementById('new-end'); e.min=this.value; if(!e.value||e.value&lt;this.value){e.value=this.value;}">
+          </div>
+          <div class="form-field">
+            <label>End Date</label>
+            <input type="date" id="new-end" min="2026-11-17">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Discount %</label>
+            <input type="number" id="new-discount" min="10" max="95" value="10" style="width:100%">
+          </div>
+          <div class="form-field">
+            <label>Type</label>
+            <select id="new-type">
+              <option value="THIRD_PARTY">3rd Party Event</option>
+              <option value="SEASONAL">Seasonal Sale</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-error" id="form-error"></div>
+        <button class="add-btn" id="add-event-btn">+ Add Event</button>
+      </div>
+    </div>
+
+    <!-- Rules reference -->
+    <div class="panel">
+      <div class="panel-head"><span class="dot"></span> Steam Rules (Summary)</div>
+      <div class="rules-list">
+        <div class="rule-item"><span class="rule-icon">🔒</span><div class="rule-text"><strong>30-day Release Cooldown</strong> — no discounts for 30 days post-launch. <em>Seasonal sales are NOT exempt from this.</em></div></div>
+        <div class="rule-item"><span class="rule-icon">⏳</span><div class="rule-text"><strong>30-day Discount Cooldown</strong> — 30 days between discounts. <em>Seasonal sales ARE exempt — you can enter or exit a seasonal sale regardless of this cooldown.</em></div></div>
+        <div class="rule-item"><span class="rule-icon">🌤️</span><div class="rule-text"><strong>Seasonal exemption is two-way</strong> — you can discount within 30 days before OR after a seasonal sale.</div></div>
+        <div class="rule-item"><span class="rule-icon">🏷️</span><div class="rule-text"><strong>Launch Discount</strong> — exempt from seasonal discount cooldowns (same as standard discounts).</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="timeline-wrap">
+    <div class="timeline-head">
+      <span>Timeline / Gantt View</span>
+      <span class="scroll-hint">← scroll chart →</span>
+      <div class="export-btns"><span style="font-size:11px; color:#a0b0cc; font-family:var(--mono); margin-right:4px; display:inline-flex; align-items:center; line-height:1;">Export</span>
+        <button class="export-btn" id="export-csv-btn" disabled="">↓ CSV</button>
+        <button class="export-btn" id="export-png-btn" disabled="">↓ PNG</button>
+        <button class="export-btn" id="export-html-btn" style="border-color:var(--green);color:var(--green);">↓ Save as HTML</button>
+      </div>
+    </div>
+    <div class="timeline-inner" id="timeline-inner"><div class="empty-state"><div class="empty-icon">📅</div>Tick some events on the left<br>to generate your discount timeline.</div></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#c47ed4"></div> Launch</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#2a9d8f"></div> Seasonal</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#e07b4a"></div> 3rd Party</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#4a7fc1"></div> Standard</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#2d3550"></div> Cooldown</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#ff5f7e; opacity:0.5"></div> Blocked</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#4a7fc1; opacity:0.35; border:1px dashed #4a7fc1"></div> Std. discount window</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- GAME CONFIG --------------------------------------------------------------
+const GAME = {
+  launchDate:         new Date('2026-05-18'),
+  launchDiscountEnd:  new Date('2026-06-01'),
+  launchDiscountPct:  10,
+};
+const RELEASE_COOLDOWN_END = addDays(GAME.launchDate, 30); // Jun 17
+
+// --- EVENTS -------------------------------------------------------------------
+const EVENTS = [
+  // SEASONAL - exempt from discount cooldowns (both directions)
+  { id:"summer", name:"Summer Sale", type:"SEASONAL", start:"2026-06-25", end:"2026-07-09", discount:10 },
+  { id:"autumn", name:"Autumn Sale", type:"SEASONAL", start:"2026-10-05", end:"2026-10-12", discount:15 },
+  { id:"winter", name:"Winter Sale", type:"SEASONAL", start:"2026-12-17", end:"2027-01-04", discount:20 },
+  // THIRD PARTY
+  { id:"simfest", name:"SimFest", type:"THIRD_PARTY", start:"2026-07-20", end:"2026-07-27", discount:10 },
+  { id:"tiny", name:"Tiny Teams", type:"THIRD_PARTY", start:"2026-08-02", end:"2026-08-06", discount:10 },
+  { id:"crunchy", name:"Crunchy Pixels Sale", type:"THIRD_PARTY", start:"2026-08-03", end:"2026-08-10", discount:10 },
+  { id:"wholesome", name:"Wholesome Celebration", type:"THIRD_PARTY", start:"2026-08-06", end:"2026-08-13", discount:10 },
+  { id:"custom_1", name:"LudoNarraCon", type:"THIRD_PARTY", start:"2026-10-08", end:"2026-10-15", discount:15, custom:true },
+  { id:"custom_2", name:"Cozy Quest", type:"THIRD_PARTY", start:"2026-11-17", end:"2026-11-24", discount:10, custom:true }
+];
+EVENTS.forEach(e => {
+  e.startDate = new Date(e.start);
+  e.endDate   = new Date(e.end);
+  if (e.type === 'STANDARD' && e.durationDays) {
+    e.effectiveEnd = addDays(e.startDate, e.durationDays);
+  } else {
+    e.effectiveEnd = e.endDate;
+  }
+});
+
+// --- PRESETS ------------------------------------------------------------------
+// --- STATE --------------------------------------------------------------------
+let selected    = new Set([]);
+// --- HELPERS ------------------------------------------------------------------
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function fmtShort(d)   { return d.toLocaleDateString('en-GB', { day:'numeric', month:'short' }); }
+function fmtMed(d)     { return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
+
+// --- CORE RULE: is a cooldown "bridged" by a seasonal sale? ------------------
+// The 30-day discount cooldown does NOT apply if a Seasonal sale falls
+// between the previous discount end and the next event start.
+// i.e. you can discount -> seasonal (no cooldown needed to enter)
+//      and seasonal -> discount (no cooldown from the seasonal exit)
+function seasonalBridgesBetween(fromDate, toDate) {
+  // Is there a seasonal sale whose window overlaps or sits between fromDate and toDate?
+  return EVENTS.some(e =>
+    e.type === 'SEASONAL' &&
+    e.startDate <= toDate &&
+    e.endDate   >= fromDate
+  );
+}
+
+// --- VALIDATION ENGINE --------------------------------------------------------
+// Returns for each event: 'ok' | 'blocked' | 'incompatible' | 'disabled'
+// 'disabled'      - hard rule violation regardless of other selections (release cooldown)
+// 'blocked'       - conflicts with another SELECTED event's cooldown
+// 'incompatible'  - would conflict IF selected (preview warning, not yet selected)
+// 'ok'            - fine
+
+function computeStatuses(selectedIds) {
+  // Sort all events by start date
+  const allSorted = EVENTS.slice().sort((a,b) => a.startDate - b.startDate);
+
+  // First pass: determine disabled events (hard rules, independent of selection)
+  const hardDisabled = new Map(); // id -> reason
+  EVENTS.forEach(ev => {
+    // Release cooldown: no discounts for 30 days post-launch (seasonal NOT exempt)
+    if (ev.startDate < RELEASE_COOLDOWN_END) {
+      // Exception: launch discount itself is fine (it starts at launch)
+      // Exception: the Cozy event overlaps launch discount period - blocked by release cooldown
+      if (ev.type !== 'SEASONAL') {
+        // Third party / standard within release cooldown window
+        hardDisabled.set(ev.id, `Within 30-day release cooldown (ends ${fmtShort(RELEASE_COOLDOWN_END)})`);
+      } else {
+        // Seasonal within release cooldown - also NOT exempt per Steam docs
+        hardDisabled.set(ev.id, `Release cooldown active until ${fmtShort(RELEASE_COOLDOWN_END)} - seasonal sales are NOT exempt from this`);
+      }
+    }
+  });
+
+  // Build timeline of selected events (excluding hard-disabled)
+  const validSelected = allSorted.filter(e => selectedIds.has(e.id) && !hardDisabled.has(e.id));
+
+  // Second pass: check discount cooldown conflicts among selected events
+  const conflictReasons = new Map(); // id -> reason
+
+  // Timeline state: list of {endDate, type, id, isSeasonal}
+  // Start with launch discount as anchor
+  let discountHistory = [
+    { endDate: GAME.launchDiscountEnd, startDate: GAME.launchDate, type: 'LAUNCH', isSeasonal: false }
+  ];
+
+  for (const ev of validSelected) {
+    const lastDiscount = discountHistory[discountHistory.length - 1];
+    const cooldownEnd  = addDays(lastDiscount.endDate, 30);
+    const isSeasonal   = ev.type === 'SEASONAL';
+    const lastIsSeasonal = lastDiscount.isSeasonal;
+
+    // Seasonal sale: exempt from 30-day discount cooldown (both entry and exit)
+    if (isSeasonal) {
+      // OK - no cooldown check needed to enter a seasonal
+      discountHistory.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: true, id: ev.id });
+      continue;
+    }
+
+    // Non-seasonal: check if last discount's cooldown is active
+    if (ev.startDate < cooldownEnd) {
+      // Is the cooldown bridged by a seasonal sale?
+      if (lastIsSeasonal) {
+        // Previous event was seasonal - no cooldown applies on exit
+        discountHistory.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: false, id: ev.id });
+        continue;
+      }
+      // Check if any seasonal sale sits between lastDiscount.endDate and ev.startDate
+      if (seasonalBridgesBetween(lastDiscount.endDate, ev.startDate)) {
+        discountHistory.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: false, id: ev.id });
+        continue;
+      }
+      // Shared discount window: if the previous event was THIRD_PARTY and this one
+      // is too, check if the span from the first event's start to this event's end
+      // is within 14 days (Steam's max custom discount duration).
+      // If so, treat as one shared discount - cooldown fires from the latest end.
+      if (ev.type === 'THIRD_PARTY' && lastDiscount.type === 'THIRD_PARTY') {
+        // Find the earliest start of the current linked group
+        let groupStart = lastDiscount.groupStart || lastDiscount.startDate || lastDiscount.endDate;
+        const spanDays = Math.ceil((ev.effectiveEnd - groupStart) / 86400000);
+        if (spanDays <= 14) {
+          const last = discountHistory[discountHistory.length - 1];
+          if (ev.effectiveEnd > last.endDate) last.endDate = ev.effectiveEnd;
+          discountHistory.push({ endDate: ev.effectiveEnd, type: ev.type, isSeasonal: false, id: ev.id, linked: true, groupStart });
+          continue;
+        }
+        // Span exceeds 14 days - genuine conflict, cannot share one discount
+        conflictReasons.set(ev.id,
+          `Cannot link with previous 3rd party event - span would exceed 14 days (Steam's max discount duration)`
+        );
+        continue;
+      }
+      // Genuine conflict
+      const daysShort = Math.ceil((cooldownEnd - ev.startDate) / 86400000);
+      conflictReasons.set(ev.id,
+        `Cooldown from ${lastDiscount.type === 'LAUNCH' ? 'launch discount' : 'previous event'} runs until ${fmtShort(cooldownEnd)} - ${daysShort} day${daysShort !== 1 ? 's' : ''} too early`
+      );
+    } else {
+      discountHistory.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: false, id: ev.id });
+    }
+  }
+
+  // Third pass: for UN-selected events, check if they'd conflict if added
+  const incompatibleReasons = new Map();
+  const nonSelectedNonDisabled = allSorted.filter(e => !selectedIds.has(e.id) && !hardDisabled.has(e.id));
+
+  for (const candidate of nonSelectedNonDisabled) {
+    // Simulate adding this candidate to the timeline
+    const testSet = new Set([...selectedIds, candidate.id]);
+    const testStatuses = computeStatusesSimple(testSet, hardDisabled);
+    if (testStatuses.has(candidate.id)) {
+      incompatibleReasons.set(candidate.id, testStatuses.get(candidate.id));
+    }
+  }
+
+  // Build final status map
+  const statuses = new Map();
+  EVENTS.forEach(ev => {
+    if (hardDisabled.has(ev.id))       statuses.set(ev.id, { state:'disabled',      reason: hardDisabled.get(ev.id) });
+    else if (conflictReasons.has(ev.id)) statuses.set(ev.id, { state:'conflict',      reason: conflictReasons.get(ev.id) });
+    else if (incompatibleReasons.has(ev.id)) statuses.set(ev.id, { state:'incompatible', reason: incompatibleReasons.get(ev.id) });
+    else if (selectedIds.has(ev.id))   statuses.set(ev.id, { state:'ok' });
+    else                               statuses.set(ev.id, { state:'available' });
+  });
+
+  return statuses;
+}
+
+// Simplified version used for "would this conflict if added?" checks
+function computeStatusesSimple(selectedIds, hardDisabled) {
+  const allSorted  = EVENTS.slice().sort((a,b) => a.startDate - b.startDate);
+  const validSel   = allSorted.filter(e => selectedIds.has(e.id) && !hardDisabled.has(e.id));
+  const conflicts  = new Map();
+
+  let history = [{ endDate: GAME.launchDiscountEnd, startDate: GAME.launchDate, type:'LAUNCH', isSeasonal:false }];
+
+  for (const ev of validSel) {
+    const last = history[history.length - 1];
+    const cooldownEnd = addDays(last.endDate, 30);
+    const isSeasonal  = ev.type === 'SEASONAL';
+
+    if (isSeasonal) {
+      history.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: true, id: ev.id });
+      continue;
+    }
+    if (ev.startDate < cooldownEnd) {
+      if (last.isSeasonal || seasonalBridgesBetween(last.endDate, ev.startDate)) {
+        history.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: false, id: ev.id });
+        continue;
+      }
+      // Shared discount window for consecutive 3rd party events (14-day span rule)
+      if (ev.type === 'THIRD_PARTY' && last.type === 'THIRD_PARTY') {
+        const groupStart = last.groupStart || last.startDate || last.endDate;
+        const spanDays = Math.ceil((ev.effectiveEnd - groupStart) / 86400000);
+        if (spanDays <= 14) {
+          const prev = history[history.length - 1];
+          if (ev.effectiveEnd > prev.endDate) prev.endDate = ev.effectiveEnd;
+          history.push({ endDate: ev.effectiveEnd, type: ev.type, isSeasonal: false, id: ev.id, linked: true, groupStart });
+          continue;
+        }
+        const daysShort = Math.ceil((cooldownEnd - ev.startDate) / 86400000);
+        conflicts.set(ev.id, `Cannot link with previous 3rd party event - span would exceed 14 days (Steam's max discount duration)`);
+        continue;
+      }
+      const daysShort = Math.ceil((cooldownEnd - ev.startDate) / 86400000);
+      conflicts.set(ev.id, `Would be in cooldown - ${daysShort} day${daysShort !== 1 ? 's' : ''} too early (clears ${fmtShort(cooldownEnd)})`);
+    } else {
+      history.push({ endDate: ev.effectiveEnd, startDate: ev.startDate, type: ev.type, isSeasonal: false, id: ev.id });
+    }
+  }
+  return conflicts;
+}
+
+// --- RENDER SAVED SCENARIOS --------------------------------------------------
+// --- RENDER EVENTS ------------------------------------------------------------
+function renderEvents() {
+  const statuses  = computeStatuses(selected);
+  const container = document.getElementById('events-container');
+  container.innerHTML = '';
+
+  const groups = [
+    { label:'Seasonal Sales',      types:['SEASONAL'] },
+    { label:'Third-Party Events',  types:['THIRD_PARTY'] },
+  ];
+
+  groups.forEach(group => {
+    const groupEvents = EVENTS.filter(e => group.types.includes(e.type));
+    const lbl = document.createElement('div');
+    lbl.className = 'event-group-label';
+    lbl.textContent = group.label;
+    container.appendChild(lbl);
+
+    groupEvents.forEach(ev => {
+      const st = statuses.get(ev.id);
+      const isChecked = selected.has(ev.id);
+      const dateStr   = fmtShort(ev.startDate) + ' - ' + fmtShort(ev.effectiveEnd);
+      const typeShort = { SEASONAL:'Seasonal', THIRD_PARTY:'3rd Party', STANDARD:'Standard' }[ev.type];
+
+      const row = document.createElement('div');
+      let rowClass = 'event-row';
+      if (st.state === 'disabled')      rowClass += ' disabled';
+      else if (st.state === 'conflict') rowClass += ' conflict';
+      else if (st.state === 'incompatible') rowClass += ' incompatible';
+      else if (st.state === 'ok')       rowClass += ' checked';
+      row.className = rowClass;
+
+      // Badge
+      let badge = '';
+      if (st.state === 'disabled') {
+        badge = `<span class="status-tag tag-release">Release Cooldown</span>`;
+      } else if (st.state === 'conflict') {
+        badge = `<span class="status-tag tag-blocked">Conflict</span>`;
+      } else if (st.state === 'incompatible') {
+        badge = `<span class="status-tag tag-locked">Locked out</span>`;
+      } else {
+        badge = `<span class="status-tag tag-${ev.type}">${typeShort}</span>`;
+      }
+
+      // Checkbox symbol
+      let cbContent = '';
+      if (st.state === 'disabled')      cbContent = '-';
+      else if (st.state === 'conflict') cbContent = '✗';
+      else if (st.state === 'ok')       cbContent = '✓';
+
+      // Tooltip
+      let tooltip = '';
+      if (st.reason) {
+        tooltip = `<div class="tooltip">${st.reason}</div>`;
+      }
+
+      // Build the row wrapper (row + inline edit panel sit inside a container div)
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'border-radius:6px; overflow:hidden;';
+
+      row.innerHTML = `
+        <div class="custom-cb">${cbContent}</div>
+        <div class="event-info">
+          <div class="event-name">${ev.name}</div>
+          <div class="event-date">${dateStr} · ${ev.discount}% off</div>
+        </div>
+        ${badge}
+        ${tooltip}
+        <button class="edit-btn" title="Edit event">✎</button>
+        ${ev.custom ? `<button class="delete-btn" title="Remove event">×</button>` : ''}
+      `;
+
+      // Duration toggle for STANDARD events
+      let durToggle = null;
+      if (ev.type === 'STANDARD') {
+        durToggle = document.createElement('div');
+        durToggle.className = 'dur-toggle';
+        durToggle.innerHTML = `
+          <button class="dur-btn${ev.durationDays === 7  ? ' active' : ''}" data-days="7">7d</button>
+          <button class="dur-btn${ev.durationDays === 14 ? ' active' : ''}" data-days="14">14d</button>
+        `;
+        durToggle.querySelectorAll('.dur-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const days = parseInt(btn.dataset.days, 10);
+            const idx = EVENTS.findIndex(x => x.id === ev.id);
+            if (idx !== -1) {
+              EVENTS[idx].durationDays = days;
+              EVENTS[idx].effectiveEnd = addDays(EVENTS[idx].startDate, days);
+            }
+            renderAll();
+          });
+        });
+      }
+
+      // Inline edit panel
+      const editPanel = document.createElement('div');
+      editPanel.className = 'inline-edit';
+      editPanel.innerHTML = `
+        <div class="inline-edit-row">
+          <label>Discount %</label>
+          <input type="number" class="edit-discount" min="10" max="95" value="${ev.discount}">
+          <label style="margin-left:8px;">Start</label>
+          <input type="date" class="edit-start" value="${ev.start}">
+          <label>End</label>
+          <input type="date" class="edit-end" value="${ev.end}">
+        </div>
+        <div class="inline-edit-row">
+          <button class="edit-save-btn">Save</button>
+          <button class="edit-cancel-btn">Cancel</button>
+          <span class="edit-error"></span>
+        </div>
+      `;
+
+      // Edit button toggles panel
+      const editBtn = row.querySelector('.edit-btn');
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editPanel.classList.toggle('open');
+      });
+
+      // Save handler
+      editPanel.querySelector('.edit-save-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const discountInput = editPanel.querySelector('.edit-discount');
+        const startInput    = editPanel.querySelector('.edit-start');
+        const endInput      = editPanel.querySelector('.edit-end');
+        const errEl         = editPanel.querySelector('.edit-error');
+        errEl.textContent   = '';
+
+        const newDiscount = parseInt(discountInput.value, 10);
+        const newStart    = startInput.value;
+        const newEnd      = endInput.value;
+
+        if (isNaN(newDiscount) || newDiscount < 10 || newDiscount > 95) {
+          errEl.textContent = 'Discount must be 10-95%.'; return;
+        }
+        if (newStart && newEnd && newEnd <= newStart) {
+          errEl.textContent = 'End date must be after start date.'; return;
+        }
+
+        const idx = EVENTS.findIndex(x => x.id === ev.id);
+        if (idx !== -1) {
+          EVENTS[idx].discount = newDiscount;
+          if (newStart) { EVENTS[idx].start = newStart; EVENTS[idx].startDate = new Date(newStart); }
+          if (newEnd)   { EVENTS[idx].end   = newEnd;   EVENTS[idx].endDate   = new Date(newEnd);   }
+        }
+        renderAll();
+      });
+
+      // Cancel handler
+      editPanel.querySelector('.edit-cancel-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        editPanel.classList.remove('open');
+      });
+
+      // Delete handler for custom events
+      if (ev.custom) {
+        row.querySelector('.delete-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = EVENTS.findIndex(x => x.id === ev.id);
+          if (idx !== -1) EVENTS.splice(idx, 1);
+          selected.delete(ev.id);
+              renderAll();
+        });
+      }
+
+      // Click handler on row (toggle selection)
+      // Capture evId immediately to avoid closure issues in loops
+      const evId = ev.id;
+      if (st.state !== 'disabled' && st.state !== 'incompatible') {
+        row.addEventListener('click', (e) => {
+          if (e.target.closest('.edit-btn') || e.target.closest('.delete-btn') || e.target.closest('.inline-edit')) return;
+          if (selected.has(evId)) selected.delete(evId);
+          else selected.add(evId);
+          renderAll();
+        });
+      }
+
+      if (durToggle) {
+        // Insert toggle between badge and edit button inside the row
+        const editBtnEl = row.querySelector('.edit-btn');
+        row.insertBefore(durToggle, editBtnEl);
+      }
+      wrapper.appendChild(row);
+      wrapper.appendChild(editPanel);
+
+      container.appendChild(wrapper);
+    });
+  });
+}
+
+// --- RENDER VALIDATION BAR ----------------------------------------------------
+function renderValidation() {
+  const bar = document.getElementById('validation-bar');
+  if (selected.size === 0) {
+    bar.className = 'validation-bar empty';
+    bar.innerHTML = 'Select events above to see your timeline.';
+    return;
+  }
+  const statuses   = computeStatuses(selected);
+  const conflicts  = [...statuses.entries()].filter(([,v]) => v.state === 'conflict');
+  const okCount    = [...statuses.entries()].filter(([id,v]) => v.state === 'ok' && selected.has(id)).length;
+
+  if (conflicts.length === 0) {
+    bar.className = 'validation-bar valid';
+    bar.innerHTML = `✓ Valid timeline - ${okCount} event${okCount !== 1 ? 's' : ''} scheduled with no conflicts.`;
+  } else {
+    bar.className = 'validation-bar invalid';
+    let html = `✗ ${conflicts.length} conflict${conflicts.length !== 1 ? 's' : ''}:`;
+    conflicts.forEach(([id, v]) => {
+      const ev = EVENTS.find(e => e.id === id);
+      html += `<div class="conflict-detail">-> <strong>${ev.name}:</strong> ${v.reason}</div>`;
+    });
+    bar.innerHTML = html;
+  }
+}
+
+// --- STANDARD DISCOUNT GAP SUGGESTIONS ---------------------------------------
+// Scans every gap between confirmed events (and after the last one) for
+// windows where a standard discount could legally be placed.
+//
+// Left-edge rule:  if previous event was SEASONAL -> can start day after it ends
+//                  otherwise -> must wait 30 days after it ends
+// Right-edge rule: if next event is SEASONAL -> no buffer needed before it starts
+//                  (seasonal entry is exempt from discount cooldown)
+//                  otherwise -> discount must end at least 30 days before next event
+// Minimum usable window: 7 days
+// Each gap can yield multiple suggestions spaced 30 days apart (7-day window + 30d cooldown)
+function computeStandardSuggestions() {
+  if (selected.size === 0) return [];
+
+  const statuses    = computeStatuses(selected);
+  const confirmed   = EVENTS.filter(e => selected.has(e.id) && statuses.get(e.id).state === 'ok')
+                            .sort((a,b) => a.startDate - b.startDate);
+  if (confirmed.length === 0) return [];
+
+  const suggestions = [];
+  const today       = new Date();
+  const MAX_PER_GAP = 6;
+
+  // Build the full sequence of anchors: launch discount + confirmed events
+  // Each anchor: { end, isSeasonal }
+  const anchors = [
+    { end: GAME.launchDiscountEnd, isSeasonal: false }
+  ];
+  confirmed.forEach(ev => {
+    anchors.push({ end: ev.effectiveEnd, isSeasonal: ev.type === 'SEASONAL' });
+  });
+
+  // Process each gap: between anchor[i] and confirmed[i] (next event)
+  // plus the tail after the last anchor
+  const nextEvents = [...confirmed, null]; // null = no next event (open tail)
+
+  anchors.forEach((anchor, i) => {
+    const nextEv = nextEvents[i]; // the event that comes after this anchor
+
+    // Left edge: when can a discount start after this anchor?
+    const gapStart = anchor.isSeasonal
+      ? new Date(anchor.end)          // seasonal exit: start immediately
+      : addDays(anchor.end, 30);      // non-seasonal: wait 30 days
+
+    // Right edge: when must a discount end by?
+    let gapEnd;
+    if (!nextEv) {
+      // Tail: 6 months from the later of gapStart or today
+      gapEnd = addDays(new Date(Math.max(gapStart.getTime(), today.getTime())), 6 * 30);
+    } else if (nextEv.type === 'SEASONAL') {
+      // Next event is seasonal: entry exempt, so discount can run right up to its start
+      gapEnd = new Date(nextEv.startDate);
+    } else {
+      // Next event is non-seasonal: discount must finish 30 days before it starts
+      gapEnd = addDays(nextEv.startDate, -30);
+    }
+
+    // Clamp gapStart to today at minimum (no point suggesting past windows)
+    let cursor = new Date(Math.max(gapStart.getTime(), today.getTime()));
+
+    let count = 0;
+    while (count < MAX_PER_GAP) {
+      const windowStart = new Date(cursor);
+      const window7end  = addDays(windowStart, 7);
+      const window14end = addDays(windowStart, 14);
+
+      // Need at least 7 days before the right edge
+      if (window7end > gapEnd) break;
+
+      // Cap 14-day end at gapEnd
+      const cappedEnd14 = window14end <= gapEnd ? window14end : new Date(gapEnd);
+
+      suggestions.push({
+        start:  windowStart,
+        end7:   window7end,
+        end14:  cappedEnd14,
+        gapIdx: i,   // which gap this belongs to (for labelling)
+      });
+
+      // Next possible slot: 30 days after the 7-day window ends
+      cursor = addDays(window7end, 30);
+      count++;
+    }
+  });
+
+  // Label suggestions sequentially across all gaps
+  suggestions.forEach((s, i) => { s.label = `Std. discount opportunity ${i + 1}`; });
+
+  return suggestions;
+}
+
+// --- RENDER GANTT -------------------------------------------------------------
+function renderGantt() {
+  const inner = document.getElementById('timeline-inner');
+  if (selected.size === 0) {
+    inner.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div>Tick some events on the left<br>to generate your discount timeline.</div>`;
+    return;
+  }
+
+  const statuses = computeStatuses(selected);
+  const allSelected = EVENTS.filter(e => selected.has(e.id)).sort((a,b) => a.startDate - b.startDate);
+
+  // Build rows: launch + cooldown + selected events + their cooldown bands
+  const rows = [];
+
+  rows.push({ label:`Launch Discount · ${GAME.launchDiscountPct}% off`, startDate: GAME.launchDate, endDate: GAME.launchDiscountEnd, type:'LAUNCH', blocked:false, isCooldown:false });
+  rows.push({ label:'Release Cooldown (30 days)', startDate: GAME.launchDiscountEnd, endDate: RELEASE_COOLDOWN_END, type:'COOLDOWN', blocked:false, isCooldown:true });
+
+  let lastNonSeasonalEnd = GAME.launchDiscountEnd;
+  let lastWasSeasonal    = false;
+
+  allSelected.forEach(ev => {
+    const st = statuses.get(ev.id);
+    const isBlocked  = st.state === 'conflict';
+    const isSeasonal = ev.type === 'SEASONAL';
+
+    rows.push({
+      label: isBlocked ? `(blocked) ${ev.name}` : `${ev.name} · ${ev.discount}% off`,
+      startDate: ev.startDate,
+      endDate: ev.effectiveEnd,
+      type: ev.type,
+      blocked: isBlocked,
+      isCooldown: false,
+      reason: st.reason,
+    });
+
+    if (!isBlocked) {
+      if (!isSeasonal) {
+        // Cooldown band after non-seasonal event
+        const cdEnd = addDays(ev.effectiveEnd, 30);
+        rows.push({ label:'Cooldown', startDate: ev.effectiveEnd, endDate: cdEnd, type:'COOLDOWN', blocked:false, isCooldown:true });
+        lastNonSeasonalEnd = ev.effectiveEnd;
+        lastWasSeasonal = false;
+      } else {
+        // After seasonal: no cooldown band needed (seasonal exit is exempt)
+        lastWasSeasonal = true;
+      }
+    }
+  });
+
+  // Standard discount suggestions
+  const suggestions = computeStandardSuggestions();
+  suggestions.forEach((s, i) => {
+    rows.push({
+      label: `Gap ${i+1}: earliest standard discount`,
+      startDate: s.start,
+      endDate: s.end14,   // show full 14-day potential window
+      end7: s.end7,
+      type: 'SUGGESTION',
+      blocked: false,
+      isCooldown: false,
+      isSuggestion: true,
+    });
+  });
+
+  // Sort all rows chronologically by start date
+  rows.sort((a, b) => a.startDate - b.startDate);
+
+  // Date range
+  const allDates  = rows.flatMap(r => [r.startDate, r.endDate]);
+  const minDate   = new Date(Math.min(...allDates) - 6*86400000);
+  const maxDate   = new Date(Math.max(...allDates) + 25*86400000);
+  const totalMs   = maxDate - minDate;
+
+  // ~8px per day = ~240px per month, ~4 months visible at once in typical window
+  const PX_PER_DAY = 8;
+  const CHART_W    = Math.ceil(totalMs / 86400000) * PX_PER_DAY;
+  const LABEL_W    = 230;   // frozen label pane width
+  const ROW_H      = 56;
+  const BAR_H      = 34;
+  const PAD_TOP    = 48;
+  const H          = rows.length * ROW_H + PAD_TOP + 10;
+
+  const CHAR_W     = 7.2;  // DM Mono at 12px
+  function clippedW(text, avail) {
+    const maxC = Math.floor(avail / CHAR_W);
+    return text.length <= maxC ? text : text.substring(0, Math.max(0, maxC - 1)) + '...';
+  }
+
+  function xOf(d) { return ((d - minDate) / 86400000) * PX_PER_DAY; }
+
+  const TYPE_COLOR = {
+    LAUNCH:      '#c47ed4',
+    SEASONAL:    '#2a9d8f',
+    THIRD_PARTY: '#e07b4a',
+    STANDARD:    '#4a7fc1',
+    COOLDOWN:    '#232d45',
+    SUGGESTION:  '#4a7fc1',
+  };
+
+  // Two SVGs: label pane (frozen) + chart pane (scrollable)
+  let labelSvg = `<svg id="gantt-label-svg" width="${LABEL_W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  labelSvg += `<rect width="${LABEL_W}" height="${H}" fill="#131720"/>`;
+
+  let svg = `<svg id="gantt-chart-svg" width="${CHART_W}" height="${H}" xmlns="http://www.w3.org/2000/svg">`;
+  svg += `<rect width="${CHART_W}" height="${H}" fill="#131720"/>`;
+
+  // Month gridlines + labels (chart SVG)
+  const months = [];
+  let cur = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
+  while (cur <= maxDate) { months.push(new Date(cur)); cur.setMonth(cur.getMonth()+1); }
+  months.forEach(m => {
+    const x = xOf(m);
+    svg += `<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}" stroke="#1e2740" stroke-width="1" stroke-dasharray="2,4"/>`;
+    svg += `<text x="${(x+4).toFixed(1)}" y="18" fill="#7a9abf" font-size="12" font-family="DM Mono,monospace">${m.toLocaleDateString('en-GB',{month:'short'})}</text>`;
+    svg += `<text x="${(x+4).toFixed(1)}" y="32" fill="#5c7a9a" font-size="10" font-family="DM Mono,monospace">${m.getFullYear()}</text>`;
+  });
+
+  // Rows - frozen labels in labelSvg, bars in scrollable svg
+  rows.forEach((row, i) => {
+    const y    = PAD_TOP + i * ROW_H;
+    const x1   = xOf(row.startDate);
+    const x2   = xOf(row.endDate);
+    const barW = Math.max(x2 - x1, 3);
+    const barY = y + (ROW_H - BAR_H) / 2;
+    const midY = barY + BAR_H / 2;
+
+    // Alternating row stripe across both panes
+    if (i % 2 === 0) {
+      labelSvg += `<rect x="0" y="${y}" width="${LABEL_W}" height="${ROW_H}" fill="#ffffff" opacity="0.025"/>`;
+      svg      += `<rect x="0" y="${y}" width="${CHART_W}" height="${ROW_H}" fill="#ffffff" opacity="0.025"/>`;
+    }
+
+    // -- Label pane (frozen left) ----------------------------------------------
+    const textY1 = midY - 7;
+    const textY2 = midY + 8;
+    const avail  = LABEL_W - 12;
+
+    if (row.isSuggestion) {
+      const dateStr = fmtShort(row.startDate) + ' - ' + fmtShort(row.end7) + ' / ' + fmtShort(row.endDate);
+      labelSvg += `<text x="8" y="${textY1.toFixed(1)}" fill="#7aaee8" font-size="12" font-family="DM Mono,monospace">${clippedW(row.label, avail)}</text>`;
+      labelSvg += `<text x="8" y="${textY2.toFixed(1)}" fill="#5c8abf" font-size="10.5" font-family="DM Mono,monospace">${clippedW(dateStr, avail)}</text>`;
+    } else if (row.isCooldown) {
+      labelSvg += `<text x="8" y="${textY1.toFixed(1)}" fill="#6a7d9e" font-size="12" font-family="DM Mono,monospace">${clippedW(row.label, avail)}</text>`;
+      labelSvg += `<text x="8" y="${textY2.toFixed(1)}" fill="#4a5e7a" font-size="10.5" font-family="DM Mono,monospace">${clippedW(fmtShort(row.startDate) + ' - ' + fmtShort(row.endDate), avail)}</text>`;
+    } else if (row.blocked) {
+      labelSvg += `<text x="8" y="${textY1.toFixed(1)}" fill="#ff7090" font-size="12" font-family="DM Mono,monospace">${clippedW(row.label, avail)}</text>`;
+      labelSvg += `<text x="8" y="${textY2.toFixed(1)}" fill="#cc4d65" font-size="10.5" font-family="DM Mono,monospace">${clippedW(fmtShort(row.startDate) + ' - ' + fmtShort(row.endDate), avail)}</text>`;
+    } else {
+      labelSvg += `<text x="8" y="${textY1.toFixed(1)}" fill="#eaf0ff" font-size="12" font-family="DM Mono,monospace">${clippedW(row.label, avail)}</text>`;
+      labelSvg += `<text x="8" y="${textY2.toFixed(1)}" fill="#8898b8" font-size="10.5" font-family="DM Mono,monospace">${clippedW(fmtShort(row.startDate) + ' - ' + fmtShort(row.endDate), avail)}</text>`;
+    }
+
+    // -- Chart bar -------------------------------------------------------------
+    if (row.isSuggestion) {
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="#4a7fc1" rx="3" opacity="0.08"/>`;
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="none" stroke="#4a7fc1" stroke-width="1.5" rx="3" opacity="0.4" stroke-dasharray="5,3"/>`;
+      const x7 = xOf(row.end7);
+      svg += `<line x1="${x7.toFixed(1)}" y1="${(barY+4).toFixed(1)}" x2="${x7.toFixed(1)}" y2="${(barY+BAR_H-4).toFixed(1)}" stroke="#4a7fc1" stroke-width="1.5" opacity="0.5"/>`;
+    } else if (row.isCooldown) {
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="#232d45" rx="3" opacity="0.7"/>`;
+    } else if (row.blocked) {
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="#ff5f7e" rx="3" opacity="0.18"/>`;
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="none" stroke="#ff5f7e" stroke-width="1.5" rx="3" opacity="0.5" stroke-dasharray="4,3"/>`;
+    } else {
+      const col = TYPE_COLOR[row.type] || '#888';
+      svg += `<rect x="${x1.toFixed(1)}" y="${barY.toFixed(1)}" width="${barW.toFixed(1)}" height="${BAR_H}" fill="${col}" rx="3" opacity="0.88"/>`;
+    }
+  });
+
+  // Today line (chart pane)
+  const today = new Date();
+  if (today >= minDate && today <= maxDate) {
+    const tx = xOf(today);
+    svg += `<line x1="${tx.toFixed(1)}" y1="0" x2="${tx.toFixed(1)}" y2="${H}" stroke="#4fc3f7" stroke-width="1" stroke-dasharray="3,3" opacity="0.45"/>`;
+    svg += `<text x="${(tx+3).toFixed(1)}" y="14" fill="#4fc3f7" font-size="9" font-family="DM Mono,monospace" opacity="0.7">today</text>`;
+  }
+
+  labelSvg += `</svg>`;
+  svg      += `</svg>`;
+
+  inner.innerHTML =
+    `<div class="gantt-labels">${labelSvg}</div>` +
+    `<div class="gantt-scroll">${svg}</div>`;
+}
+
+// --- CUSTOM EVENT IDS ---------------------------------------------------------
+// Initialise counter above any existing custom event IDs to avoid collisions
+let customEventCounter = EVENTS.reduce((max, e) => {
+  if (e.custom && e.id) {
+    const n = parseInt(e.id.replace('custom_', ''), 10);
+    return isNaN(n) ? max : Math.max(max, n);
+  }
+  return max;
+}, 0);
+
+// --- ADD EVENT FORM -----------------------------------------------------------
+document.getElementById('add-event-btn').addEventListener('click', () => {
+  const nameEl     = document.getElementById('new-name');
+  const startEl    = document.getElementById('new-start');
+  const endEl      = document.getElementById('new-end');
+  const discountEl = document.getElementById('new-discount');
+  const typeEl     = document.getElementById('new-type');
+  const errorEl    = document.getElementById('form-error');
+
+  errorEl.textContent = '';
+
+  const name     = nameEl.value.trim();
+  const startStr = startEl.value;
+  const endStr   = endEl.value;
+  const discount = parseInt(discountEl.value, 10);
+  const type     = typeEl.value;
+
+  // Validation
+  if (!name)              { errorEl.textContent = 'Please enter an event name.'; return; }
+  if (!startStr)          { errorEl.textContent = 'Please choose a start date.'; return; }
+  if (!endStr)            { errorEl.textContent = 'Please choose an end date.'; return; }
+  if (endStr <= startStr) { errorEl.textContent = 'End date must be after start date.'; return; }
+  if (isNaN(discount) || discount < 10 || discount > 95) {
+    errorEl.textContent = 'Discount must be between 10% and 95%.'; return;
+  }
+
+  const startDate = new Date(startStr);
+  const endDate   = new Date(endStr);
+  const durationDays = Math.ceil((endDate - startDate) / 86400000);
+  if (durationDays > 14) { errorEl.textContent = 'Discounts cannot run longer than 14 days.'; return; }
+  if (durationDays < 1)  { errorEl.textContent = 'Discounts cannot run shorter than 1 day.'; return; }
+
+  // Check for duplicate name
+  if (EVENTS.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    errorEl.textContent = 'An event with this name already exists.'; return;
+  }
+
+  // Build new event
+  customEventCounter++;
+  const newEvent = {
+    id:          'custom_' + customEventCounter,
+    name:        name,
+    type:        type,
+    start:       startStr,
+    end:         endStr,
+    discount:    discount,
+    startDate:   startDate,
+    endDate:     endDate,
+    effectiveEnd: endDate,
+    custom:      true,
+  };
+
+  EVENTS.push(newEvent);
+
+  // Clear form
+  nameEl.value     = '';
+  startEl.value    = '';
+  endEl.value      = '';
+  discountEl.value = '10';
+
+  activePreset = null;
+  renderAll();
+});
+
+// --- EXPORTS -----------------------------------------------------------------
+
+function exportCSV() {
+  const statuses   = computeStatuses(selected);
+  const confirmed  = EVENTS.filter(e => selected.has(e.id))
+                           .sort((a, b) => a.startDate - b.startDate);
+
+  const rows = [
+    ['Event', 'Type', 'Start', 'End', 'Discount %', 'Status', 'Notes']
+  ];
+
+  // Launch discount
+  rows.push([
+    'Launch Discount',
+    'LAUNCH',
+    GAME.launchDate.toLocaleDateString('en-GB'),
+    GAME.launchDiscountEnd.toLocaleDateString('en-GB'),
+    GAME.launchDiscountPct + '%',
+    'Confirmed',
+    ''
+  ]);
+
+  // Release cooldown
+  rows.push([
+    'Release Cooldown',
+    'COOLDOWN',
+    GAME.launchDiscountEnd.toLocaleDateString('en-GB'),
+    RELEASE_COOLDOWN_END.toLocaleDateString('en-GB'),
+    '0%',
+    'Automatic',
+    '30 days post-launch'
+  ]);
+
+  confirmed.forEach(ev => {
+    const st = statuses.get(ev.id);
+    rows.push([
+      ev.name,
+      ev.type,
+      ev.startDate.toLocaleDateString('en-GB'),
+      ev.effectiveEnd.toLocaleDateString('en-GB'),
+      ev.discount + '%',
+      st.state === 'conflict' ? 'BLOCKED' : 'Confirmed',
+      st.reason || ''
+    ]);
+    // Post-event cooldown (non-seasonal only)
+    if (ev.type !== 'SEASONAL' && st.state !== 'conflict') {
+      const cdEnd = addDays(ev.effectiveEnd, 30);
+      rows.push([
+        'Cooldown after ' + ev.name,
+        'COOLDOWN',
+        ev.effectiveEnd.toLocaleDateString('en-GB'),
+        cdEnd.toLocaleDateString('en-GB'),
+        '0%',
+        'Automatic',
+        '30-day discount cooldown'
+      ]);
+    }
+  });
+
+  // Suggestions
+  const suggestions = computeStandardSuggestions();
+  suggestions.forEach((s, i) => {
+    rows.push([
+      'Std. Discount Opportunity ' + (i + 1),
+      'SUGGESTION',
+      s.start.toLocaleDateString('en-GB'),
+      s.end14.toLocaleDateString('en-GB'),
+      '10-95%',
+      'Suggested',
+      '7d window: ends ' + s.end7.toLocaleDateString('en-GB')
+    ]);
+  });
+
+  const csv = rows.map(r =>
+    r.map(cell => '"' + String(cell).replace(/"/g, '""') + '"').join(',')
+  ).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'Steam Discount Planner.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportPNG() {
+  const chartSvg = document.getElementById('gantt-chart-svg');
+  const labelSvg = document.getElementById('gantt-label-svg');
+  if (!chartSvg || !labelSvg) return;
+
+  const chartW  = parseFloat(chartSvg.getAttribute('width'));
+  const labelW  = parseFloat(labelSvg.getAttribute('width'));
+  const h       = parseFloat(chartSvg.getAttribute('height'));
+  const totalW  = labelW + chartW;
+
+  // Serialise both SVGs and combine into one
+  const serialiser = new XMLSerializer();
+  const labelStr   = serialiser.serializeToString(labelSvg);
+  const chartStr   = serialiser.serializeToString(chartSvg);
+
+  const combined = `<svg width="${totalW}" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="${totalW}" height="${h}" fill="#0b0e14"/>
+    <g>${labelStr}</g>
+    <g transform="translate(${labelW},0)">${chartStr}</g>
+  </svg>`;
+
+  const blob  = new Blob([combined], { type: 'image/svg+xml' });
+  const url   = URL.createObjectURL(blob);
+  const img   = new Image();
+  img.onload  = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width  = totalW * 2;   // 2x for retina
+    canvas.height = h * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+    ctx.fillStyle = '#0b0e14';
+    ctx.fillRect(0, 0, totalW, h);
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(url);
+    const a    = document.createElement('a');
+    a.download = 'Steam Discount Planner.png';
+    a.href     = canvas.toDataURL('image/png');
+    a.click();
+  };
+  img.src = url;
+}
+
+// Wire up export buttons and enable/disable based on selection
+function exportHTML() {
+  // Snapshot current EVENTS array as a JS literal string
+  var lines = [];
+  var seasonal = [], third = [];
+  EVENTS.forEach(function(ev) {
+    var line = '  { id:' + JSON.stringify(ev.id) +
+      ', name:' + JSON.stringify(ev.name) +
+      ', type:' + JSON.stringify(ev.type) +
+      ', start:' + JSON.stringify(ev.start) +
+      ', end:' + JSON.stringify(ev.end) +
+      ', discount:' + ev.discount;
+    if (ev.durationDays) line += ', durationDays:' + ev.durationDays;
+    if (ev.custom) line += ', custom:true';
+    line += ' }';
+    if (ev.type === 'SEASONAL') seasonal.push(line);
+    else third.push(line);
+  });
+
+  var eventsBlock = '// --- EVENTS -------------------------------------------------------------------\n' +
+    'const EVENTS = [\n' +
+    '  // SEASONAL - exempt from discount cooldowns (both directions)\n' +
+    seasonal.join(',\n') + ',\n' +
+    '  // THIRD PARTY\n' +
+    third.join(',\n') + '\n' +
+    '];\n' +
+    'EVENTS.forEach(e => {\n' +
+    '  e.startDate = new Date(e.start);\n' +
+    '  e.endDate   = new Date(e.end);\n' +
+    '  if (e.type === \'STANDARD\' && e.durationDays) {\n' +
+    '    e.effectiveEnd = addDays(e.startDate, e.durationDays);\n' +
+    '  } else {\n' +
+    '    e.effectiveEnd = e.endDate;\n' +
+    '  }\n' +
+    '});';
+
+  var selectedBlock = 'let selected    = new Set(' + JSON.stringify([...selected]) + ');';
+
+  // Get the page HTML and patch in the new state
+  var src = document.documentElement.outerHTML;
+  src = src.replace(/\/\/ --- EVENTS -+[\s\S]*?}\);/, eventsBlock);
+  src = src.replace(/let selected\s+=\s+new Set\([^)]*\);/, selectedBlock);
+
+  var blob = new Blob([src], { type: 'text/html' });
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'index.html';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function updateExportButtons() {
+  const hasSelection = selected.size > 0;
+  document.getElementById('export-csv-btn').disabled = !hasSelection;
+  document.getElementById('export-png-btn').disabled = !hasSelection;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('export-csv-btn').addEventListener('click', exportCSV);
+  document.getElementById('export-png-btn').addEventListener('click', exportPNG);
+  document.getElementById('export-html-btn').addEventListener('click', exportHTML);
+});
+
+// --- ORCHESTRATE --------------------------------------------------------------
+function renderAll() {
+  renderEvents();
+  renderValidation();
+  renderGantt();
+  updateExportButtons();
+}
+
+renderAll();
+</script>
+
+
+</body></html>
